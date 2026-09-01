@@ -20,6 +20,7 @@ from tornado.httputil import split_host_and_port
 from traitlets.traitlets import Bool
 
 from voila.tornado.execution_request_handler import ExecutionRequestHandler
+from voila.tornado.reactive_execution_handler import ReactiveExecutionHandler
 
 from .configuration import VoilaConfiguration
 
@@ -254,6 +255,12 @@ class VoilaHandler(BaseVoilaHandler):
             queue = asyncio.Queue()
             if self.voila_configuration.progressive_rendering:
                 ExecutionRequestHandler._execution_data[kernel_id] = {
+                    "nb": gen.notebook,
+                    "config": self.traitlet_config,
+                    "show_tracebacks": self.voila_configuration.show_tracebacks,
+                }
+            if self.voila_configuration.reactive_rendering:
+                ReactiveExecutionHandler._execution_data[kernel_id] = {
                     "nb": gen.notebook,
                     "config": self.traitlet_config,
                     "show_tracebacks": self.voila_configuration.show_tracebacks,

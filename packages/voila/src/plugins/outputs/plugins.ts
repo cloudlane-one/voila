@@ -20,9 +20,13 @@ import {
   createSkeleton,
   getExecutionURL,
   handleExecutionResult,
+  createReactiveOutput,
   IExecutionMessage,
   IReceivedWidgetModel
 } from './tools';
+import { OutputAreaModel, SimplifiedOutputArea } from '@jupyterlab/outputarea';
+
+const WIDGET_VIEW_MIMETYPE = 'application/vnd.jupyter.widget-view+json';
 
 /**
  * The plugin that renders outputs.
@@ -137,10 +141,8 @@ export const renderOutputsProgressivelyPlugin: JupyterFrontEndPlugin<void> = {
             rendermime,
             widgetManager
           });
-          if (result) {
-            Object.entries(result).forEach(([key, val]) => {
-              receivedWidgetModel[key] = val;
-            });
+          for (const [key, val] of Object.entries(result)) {
+            receivedWidgetModel[key] = val;
           }
           const { cell_index, total_cell } = payload;
           if (cell_index + 1 === total_cell) {
@@ -159,6 +161,229 @@ export const renderOutputsProgressivelyPlugin: JupyterFrontEndPlugin<void> = {
       }
     };
     ws.onopen = () => {
+      ws.send(
+        JSON.stringify({ action: 'execute', payload: { kernel_id: kernelId } })
+      );
+    };
+  }
+};
+
+/**
+ * The plugin that renders outputs reactively.
+ *
+ * It behaves like the progressive rendering plugin, but additionally
+ * re-executes the cell which rendered a widget (and all the cells below
+ * it) whenever the widget is updated by the user. The websocket
+ * connection is kept open after the full execution of the notebook to
+ * allow these re-executions.
+ */
+export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
+  id: '@voila-dashboards/voila:render-outputs-reactively',
+  autoStart: true,
+  requires: [IRenderMimeRegistry],
+  activate: async (
+    app: JupyterFrontEnd,
+    rendermime: IRenderMimeRegistry
+  ): Promise<void> => {
+    const reactiveRendering =
+      PageConfig.getOption('reactiveRendering') === 'true';
+    if (!reactiveRendering) {
+      return;
+    }
+
+    createSkeleton();
+
+    const widgetManager = await (app as VoilaApp).widgetManagerPromise.promise;
+
+    if (!widgetManager) {
+      return;
+    }
+
+    const kernelId = widgetManager.kernel.id;
+
+    const outputWidgets: { [cellIdx: number]: Array<{ widget: Widget, modelId?: string }> } = {};
+    const reactiveWidgets: { [modelId: string]: { cellIdx: number, widget: Widget, hooked: boolean, pending?: boolean } } = {};
+    let totalCell = 0;
+
+    const ws = new WebSocket(getExecutionURL(kernelId));
+
+    /**
+     * Request the re-execution of the cell at `cellIndex` and all the
+     * cells below it.
+     */
+    const requestReexecution = (cellIndex: number): void => {
+      console.log(`Requesting re-execution of cell index ${cellIndex} and all cells below it.`);
+      if (ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      const cellIds: number[] = [];
+      for (let idx = cellIndex; idx < totalCell; idx++) {
+        cellIds.push(idx);
+      }
+      ws.send(
+        JSON.stringify({
+          action: 'execute_cells',
+          payload: { kernel_id: kernelId, cell_ids: cellIds }
+        })
+      );
+    };
+
+    /**
+     * Register an event handler on a rendered widget model which listens
+     * to updates made by the user and triggers the re-execution of the
+     * cell which rendered the widget and all the cells below it.
+     *
+     * State updates made by widget views go through `save_changes`, while
+     * custom messages (e.g. button clicks) go through `send`, so both are
+     * hooked.
+     */
+    const hookWidgetModel = (modelId: string): void => {
+      const cellIndex = reactiveWidgets[modelId]?.cellIdx;
+      if (cellIndex === undefined || reactiveWidgets[modelId]?.hooked) {
+        return;
+      }
+      if (!widgetManager.registeredModels.has(modelId)) {
+        // The model is not registered yet, it will be hooked when the
+        // `modelRegistered` signal is emitted.
+        return;
+      }
+      console.log(`Hooking widget model ${modelId} for cell index ${cellIndex}`);
+      reactiveWidgets[modelId].hooked = true;
+      void widgetManager
+        .get_model(modelId)
+        .then((model) => {
+          const saveChanges = model.save_changes.bind(model);
+          model.save_changes = (
+            ...args: Parameters<typeof model.save_changes>
+          ) => {
+            saveChanges(...args);
+            requestReexecution(cellIndex);
+          };
+          const send = model.send.bind(model);
+          model.send = (...args: Parameters<typeof model.send>) => {
+            send(...args);
+            requestReexecution(cellIndex);
+          };
+        })
+        .catch((error) => {
+          console.error(`Failed to hook widget model ${modelId}: ${error}`);
+        });
+    };
+
+    widgetManager.modelRegistered.connect((_: any, modelId: string) => {
+      hookWidgetModel(modelId);
+    });
+
+    ws.onmessage = async (msg) => {
+      const { action, payload }: IExecutionMessage = JSON.parse(msg.data);
+      switch (action) {
+        case 'execution_result': {
+          const { cell_index, total_cell } = payload;
+          totalCell = total_cell;
+
+          const element = document.querySelector(`[cell-index="${cell_index + 1}"]`);
+          if (!element) {
+            console.error(`No element found for cell index ${cell_index + 1}`);
+            return;
+          }
+
+          const skeleton = element
+            .getElementsByClassName('voila-skeleton-container')
+            .item(0);
+          if (skeleton) {
+            element.removeChild(skeleton);
+          }
+
+          if (!payload.output_cell.outputs) {
+            return;
+          }
+          if (payload.output_cell.outputs.length > 0) {
+            element.lastElementChild?.classList.remove(
+              'jp-mod-noOutputs',
+              'jp-mod-noInput'
+            );
+          }
+
+          if (outputWidgets[cell_index]) {
+            console.log(`Clearing previous outputs for cell index ${cell_index + 1}`);
+            for (const { widget, modelId } of outputWidgets[cell_index]) {
+              if (modelId && reactiveWidgets[modelId]) {
+                reactiveWidgets[modelId].pending = true;
+                widget.node.style.display = 'none';
+              } else {
+                if (widget.isAttached) {
+                  Widget.detach(widget);
+                }
+                widget.dispose();
+              }
+            }
+            outputWidgets[cell_index] = [];
+          }
+
+          for (const outputData of payload.output_cell.outputs) {
+            const modelId = (outputData?.data as any)?.[WIDGET_VIEW_MIMETYPE]?.model_id;
+            console.log(`Processing output data for cell index ${cell_index + 1}, modelId: ${modelId}`);
+
+            let model = null;
+            let widget = null;
+
+            if (!modelId) {
+              // New raw output case.
+              model = new OutputAreaModel({ trusted: true });
+              widget = new SimplifiedOutputArea({
+                model,
+                rendermime
+              });
+              Widget.attach(widget, element as HTMLElement);
+              model.add(outputData);
+            } else if (reactiveWidgets[modelId] && reactiveWidgets[modelId].cellIdx === cell_index && reactiveWidgets[modelId].pending) {
+              console.log("Reattaching existing widget.")
+              widget = reactiveWidgets[modelId].widget;
+              (element as any).moveBefore(widget.node, null);
+              widget.node.style.display = '';
+              reactiveWidgets[modelId].pending = false;
+            } else {
+              model = outputData;
+              widget = createReactiveOutput({
+                model: outputData,
+                rendermime,
+                parent: element as HTMLElement
+              });
+
+              if (!widget) {
+                console.error(`Failed to create widget for cell index ${cell_index + 1}, modelId: ${modelId}`);
+                continue;
+              }
+
+              reactiveWidgets[modelId] = { cellIdx: cell_index, widget, hooked: false };
+              hookWidgetModel(modelId);
+            }
+
+            outputWidgets[cell_index] = outputWidgets[cell_index] || [];
+            outputWidgets[cell_index].push({ widget, modelId });
+          }
+
+          for (const [modelId, { cellIdx, widget, pending }] of Object.entries(reactiveWidgets)) {
+            if (pending && cellIdx === cell_index) {
+              console.log(`Removing remaining pending widget for modelId ${modelId} at cell index ${cellIdx + 1}`);
+              Widget.detach(widget);
+              widget.dispose();
+              delete reactiveWidgets[modelId];
+            }
+          }
+
+          break;
+        }
+        case 'execution_error': {
+          console.error(`Execution error: ${payload.error}`);
+          break;
+        }
+        default:
+          break;
+      }
+    };
+    ws.onopen = () => {
+      // Run all the cells when the websocket connection opens.
       ws.send(
         JSON.stringify({ action: 'execute', payload: { kernel_id: kernelId } })
       );

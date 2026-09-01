@@ -230,7 +230,7 @@ Please refer to the [cookiecutter repo](https://github.com/voila-dashboards/voil
 
 Voila provides hooks that allow you to customize its behavior to fit your specific needs. These hooks enable you to inject custom functions at certain points during Voila's execution, giving you control over aspects like notebook execution and frontend configuration.
 
-Currently, Voila supports the following hooks:
+Currently, Voilà supports the following hooks:
 
 - prelaunch_hook: Access and modify the Tornado request and notebook before execution.
 - page_config_hook: Customize the page_config object, which controls the Voila frontend configuration.
@@ -758,6 +758,41 @@ or using `voila.json` file
 
 :::{warning}
 Progressive rendering mode is incompatible with the preheated kernels functionality.
+:::
+
+### Reactive rendering
+
+**Reactive rendering** builds on the progressive rendering mode: the dashboard appears immediately and the cell outputs are updated as each cell is executed by the kernel. On top of that, whenever a widget in a cell output is updated by the user, the cell which rendered the widget and all the cells below it are automatically re-executed, so the dashboard always reflects the latest widget state.
+
+To start Voilà with reactive rendering mode using CLI:
+
+```bash
+voila ... --reactive_rendering=True
+```
+
+or using `voila.json` file
+
+```python
+# voila.json
+{
+   ...
+   "VoilaConfiguration": {
+      "reactive_rendering": true,
+      ...
+   }
+}
+```
+
+In reactive rendering mode, a notebook can gracefully pause the execution of the remaining cells by raising a `voila.utils.HaltExecution` exception. Instead of the stack trace, a *Continue* button is displayed in the cell output; clicking it resumes the execution of the current cell and all the cells below. The button label can be customized with the `continue_button_label` attribute:
+
+```python
+from voila.utils import HaltExecution
+
+raise HaltExecution(continue_button_label="Load more results")
+```
+
+:::{warning}
+Reactive rendering mode is mutually exclusive with the progressive rendering mode and is incompatible with the preheated kernels functionality.
 :::
 
 ## Custom labextension for Voila

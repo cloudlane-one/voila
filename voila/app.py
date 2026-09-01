@@ -24,6 +24,8 @@ from .tornado.kernel_websocket_handler import VoilaKernelWebsocketHandler
 
 from .tornado.execution_request_handler import ExecutionRequestHandler
 
+from .tornado.reactive_execution_handler import ReactiveExecutionHandler
+
 from .tornado.contentshandler import VoilaContentsHandler
 
 from urllib.parse import urljoin
@@ -196,6 +198,7 @@ class Voila(Application):
         "show_tracebacks": "VoilaConfiguration.show_tracebacks",
         "preheat_kernel": "VoilaConfiguration.preheat_kernel",
         "progressive_rendering": "VoilaConfiguration.progressive_rendering",
+        "reactive_rendering": "VoilaConfiguration.reactive_rendering",
         "strip_sources": "VoilaConfiguration.strip_sources",
         "template": "VoilaConfiguration.template",
         "theme": "VoilaConfiguration.theme",
@@ -649,6 +652,22 @@ class Voila(Application):
                 "`progressive_rendering` can only be enabled with jupyter_server>=2"
             )
 
+        reactive_rendering = self.voila_configuration.reactive_rendering
+        if progressive_rendering and reactive_rendering:
+            raise Exception(
+                "`progressive_rendering` and `reactive_rendering` are mutually exclusive"
+            )
+
+        if preheat_kernel and reactive_rendering:
+            raise Exception(
+                "`preheat_kernel` and `reactive_rendering` are incompatible"
+            )
+
+        if not JUPYTER_SERVER_2 and reactive_rendering:
+            raise Exception(
+                "`reactive_rendering` can only be enabled with jupyter_server>=2"
+            )
+
         kernel_manager_class = voila_kernel_manager_factory(
             self.voila_configuration.multi_kernel_manager_class,
             preheat_kernel,
@@ -804,6 +823,15 @@ class Voila(Application):
                     ExecutionRequestHandler,
                 )
             )
+        if self.voila_configuration.reactive_rendering:
+            handlers.append(
+                (
+                    url_path_join(
+                        self.server_url, r"/voila/execution/%s" % _kernel_id_regex
+                    ),
+                    ReactiveExecutionHandler,
+                )
+            )
         # Serving JupyterLab extensions
         handlers.append(
             (
@@ -919,6 +947,8 @@ class Voila(Application):
                 self.port = port
                 if self.voila_configuration.progressive_rendering:
                     self.log.info("Progressive rendering is activated")
+                if self.voila_configuration.reactive_rendering:
+                    self.log.info("Reactive rendering is activated")
                 self.log.info("Voilà is running at:\n%s" % self.display_url)
             except OSError as e:
                 if e.errno == errno.EADDRINUSE:

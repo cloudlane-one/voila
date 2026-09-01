@@ -173,8 +173,12 @@ class NotebookRenderer(LoggingConfigurable):
             "kernel_start": inner_kernel_start,
             "notebook_execute": self._jinja_notebook_execute,
             "progressive_rendering": self.voila_configuration.progressive_rendering,
+            "reactive_rendering": self.voila_configuration.reactive_rendering,
         }
-        if self.voila_configuration.progressive_rendering:
+        if (
+            self.voila_configuration.progressive_rendering
+            or self.voila_configuration.reactive_rendering
+        ):
             extra_context["cell_generator"] = (
                 self._jinja_cell_generator_without_execution
             )
@@ -253,7 +257,10 @@ class NotebookRenderer(LoggingConfigurable):
         # reassigned it seems in jinja2 e.g. if we do {% with nb = notebook_execute(nb, kernel_id) %}
         # ,the base template/blocks will not see the updated variable
         #  (it seems to be local to our block)
-        if self.voila_configuration.progressive_rendering:
+        if (
+            self.voila_configuration.progressive_rendering
+            or self.voila_configuration.reactive_rendering
+        ):
             result, _ = ClearOutputPreprocessor().preprocess(
                 nb, {"metadata": {"path": self.cwd}}
             )

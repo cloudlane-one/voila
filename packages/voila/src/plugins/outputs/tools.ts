@@ -64,9 +64,11 @@ export function handleExecutionResult({
   payload: IExecutionResultMessage['payload'];
   rendermime: IRenderMimeRegistry;
   widgetManager: VoilaWidgetManager;
-}): IReceivedWidgetModel | undefined {
+}): IReceivedWidgetModel {
   const { cell_index, output_cell } = payload;
   const element = document.querySelector(`[cell-index="${cell_index + 1}"]`);
+  let receivedWidgetModel: IReceivedWidgetModel = {};
+
   if (element) {
     const skeleton = element
       .getElementsByClassName('voila-skeleton-container')
@@ -74,9 +76,9 @@ export function handleExecutionResult({
     if (skeleton) {
       element.removeChild(skeleton);
     }
-    const model = createOutputArea({ rendermime, parent: element });
+    const [model] = createOutputArea({ rendermime, parent: element });
     if (!output_cell.outputs) {
-      return;
+      return receivedWidgetModel;
     }
     if (output_cell.outputs.length > 0) {
       element.lastElementChild?.classList.remove(
@@ -91,7 +93,8 @@ export function handleExecutionResult({
         if (widgetManager.registeredModels.has(modelId)) {
           model.add(outputData);
         } else {
-          return {
+          receivedWidgetModel = {
+            ...receivedWidgetModel,
             [modelId]: {
               outputModel: model,
               executionModel: outputData
@@ -103,6 +106,7 @@ export function handleExecutionResult({
       }
     }
   }
+  return receivedWidgetModel;
 }
 
 /**
@@ -118,7 +122,7 @@ export function createOutputArea({
 }: {
   rendermime: IRenderMimeRegistry;
   parent: Element;
-}): OutputAreaModel {
+}): [OutputAreaModel, SimplifiedOutputArea] {
   const model = new OutputAreaModel({ trusted: true });
   const area = new SimplifiedOutputArea({
     model,
@@ -141,7 +145,50 @@ export function createOutputArea({
   area.node.style.flexDirection = 'column';
 
   Widget.attach(area, wrapper);
-  return model;
+  return [model, area];
+}
+
+/**
+ * Creates an output area model and attaches the output area to a specified parent element.
+ *
+ * @param model - The output model to be rendered.
+ * @param rendermime - The render mime registry.
+ * @param parent - The parent HTML element where the output will be appended.
+ * @returns The created OutputAreaModel.
+ */
+export function createReactiveOutput({
+  model,
+  rendermime,
+  parent
+}: {
+  model: any;
+  rendermime: IRenderMimeRegistry;
+  parent: HTMLElement;
+}): Widget | null {
+  const mimeType = rendermime.preferredMimeType(model.data, 'any');
+
+  if (!mimeType) {
+    return null;
+  }
+  const output = rendermime.createRenderer(mimeType);
+  output.renderModel(model).catch((error) => {
+    // Manually append error message to output
+    const pre = document.createElement('pre');
+    pre.textContent = `Javascript Error: ${error.message}`;
+    output.node.appendChild(pre);
+
+    // Remove mime-type-specific CSS classes
+    pre.className = 'lm-Widget jp-RenderedText';
+    pre.setAttribute('data-mime-type', 'application/vnd.jupyter.stderr');
+  });
+
+  output.addClass('jp-OutputArea-output');
+
+  // Attach output
+  Widget.attach(output, parent);
+
+  return output;
+
 }
 
 export function createSkeleton(): void {

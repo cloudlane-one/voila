@@ -1,6 +1,11 @@
 import {
   renderOutputsPlugin,
-  renderOutputsProgressivelyPlugin
+  renderOutputsProgressivelyPlugin,
+  renderOutputsReactivelyPlugin
 } from './plugins';
 
-export { renderOutputsPlugin, renderOutputsProgressivelyPlugin };
+export {
+  renderOutputsPlugin,
+  renderOutputsProgressivelyPlugin,
+  renderOutputsReactivelyPlugin
+};

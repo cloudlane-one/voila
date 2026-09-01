@@ -270,8 +270,22 @@ class VoilaConfiguration(traitlets.config.Configurable):
         """,
     )
 
+    reactive_rendering = Bool(
+        False,
+        config=True,
+        help="""Flag to enable or disable reactive rendering option.
+        This option builds on the progressive rendering mode: the dashboard
+        appears immediately and cell outputs are updated as each cell is
+        executed by the kernel. Additionally, when a widget in a cell output
+        is updated by the user, the cell which rendered the widget and all
+        the cells below it are re-executed.
+        This option is mutually exclusive with the progressive rendering
+        option and is not compatible with preheat-kernel option.
+        """,
+    )
+
     extra_labextensions_path = List(
         Unicode(),
         config=True,
-        help="""Extra paths to look for federated JupyterLab extensions""",
+        help="""Extra paths to look for federated JupyterLab extensions""""",
     )
