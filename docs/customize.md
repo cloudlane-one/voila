@@ -764,6 +764,8 @@ Progressive rendering mode is incompatible with the preheated kernels functional
 
 **Reactive rendering** builds on the progressive rendering mode: the dashboard appears immediately and the cell outputs are updated as each cell is executed by the kernel. On top of that, whenever a widget in a cell output is updated by the user, the cell which rendered the widget and all the cells below it are automatically re-executed, so the dashboard always reflects the latest widget state.
 
+The outputs of a cell are also streamed while the cell is executing: a cell producing several outputs in sequence (e.g. the progress of a loop, or a progress bar updated with `IPython.display.clear_output`) displays them as they are produced, instead of displaying all of them at once when the cell completes. The outputs which the final rendering of the cell hides are not streamed either: outputs captured by an `ipywidgets.Output` widget are sent over the widget channel as usual, widget views are rendered from the final cell outputs, and stderr streams and tracebacks are only streamed when `--show_tracebacks=True` is set.
+
 To start Voilà with reactive rendering mode using CLI:
 
 ```bash
@@ -783,7 +785,7 @@ or using `voila.json` file
 }
 ```
 
-In reactive rendering mode, a notebook can gracefully pause the execution of the remaining cells by raising a `voila.utils.HaltExecution` exception. Instead of the stack trace, a *Continue* button is displayed in the cell output; clicking it resumes the execution of the current cell and all the cells below. The button label can be customized with the `continue_button_label` attribute:
+In reactive rendering mode, a notebook can gracefully pause the execution of the remaining cells by raising a `voila.utils.HaltExecution` exception. Instead of the stack trace, a _Continue_ button is displayed in the cell output; clicking it resumes the execution of the current cell and all the cells below. The button label can be customized with the `continue_button_label` attribute:
 
 ```python
 from voila.utils import HaltExecution

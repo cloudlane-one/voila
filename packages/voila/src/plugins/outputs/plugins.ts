@@ -21,7 +21,10 @@ import {
   getExecutionURL,
   handleExecutionResult,
   createReactiveOutput,
+  createLiveOutputArea,
+  addLiveOutput,
   IExecutionMessage,
+  ILiveOutputArea,
   IReceivedWidgetModel
 } from './tools';
 import { OutputAreaModel, SimplifiedOutputArea } from '@jupyterlab/outputarea';
@@ -201,18 +204,62 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
 
     const kernelId = widgetManager.kernel.id;
 
-    const outputWidgets: { [cellIdx: number]: Array<{ widget: Widget, modelId?: string }> } = {};
-    const reactiveWidgets: { [modelId: string]: { cellIdx: number, widget: Widget, hooked: boolean, pending?: boolean } } = {};
+    const outputWidgets: {
+      [cellIdx: number]: Array<{ widget: Widget; modelId?: string }>;
+    } = {};
+    const reactiveWidgets: {
+      [modelId: string]: {
+        cellIdx: number;
+        widget: Widget;
+        hooked: boolean;
+        pending?: boolean;
+      };
+    } = {};
+    const liveOutputAreas: { [cellIdx: number]: ILiveOutputArea } = {};
     let totalCell = 0;
 
     const ws = new WebSocket(getExecutionURL(kernelId));
+
+    /**
+     * Get the output area displaying the outputs of the cell at `cellIndex`,
+     * creating it if the cell just started producing outputs. The skeleton
+     * placeholder is removed at the same time, since the cell is now
+     * displaying its own outputs.
+     */
+    const getLiveOutputArea = (
+      cellIndex: number,
+      element: Element
+    ): ILiveOutputArea => {
+      let liveOutputArea = liveOutputAreas[cellIndex];
+      if (!liveOutputArea) {
+        element
+          .getElementsByClassName('voila-skeleton-container')
+          .item(0)
+          ?.remove();
+        liveOutputArea = createLiveOutputArea({ rendermime, parent: element });
+        liveOutputAreas[cellIndex] = liveOutputArea;
+      }
+      return liveOutputArea;
+    };
+
+    /**
+     * Dispose of the output area displaying the outputs streamed by the cell
+     * at `cellIndex`, which is done executing: its streamed outputs are
+     * replaced by the rendering of the final cell outputs.
+     */
+    const disposeLiveOutputArea = (cellIndex: number): void => {
+      liveOutputAreas[cellIndex]?.dispose();
+      delete liveOutputAreas[cellIndex];
+    };
 
     /**
      * Request the re-execution of the cell at `cellIndex` and all the
      * cells below it.
      */
     const requestReexecution = (cellIndex: number): void => {
-      console.log(`Requesting re-execution of cell index ${cellIndex} and all cells below it.`);
+      console.log(
+        `Requesting re-execution of cell index ${cellIndex} and all cells below it.`
+      );
       if (ws.readyState !== WebSocket.OPEN) {
         return;
       }
@@ -247,7 +294,9 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
         // `modelRegistered` signal is emitted.
         return;
       }
-      console.log(`Hooking widget model ${modelId} for cell index ${cellIndex}`);
+      console.log(
+        `Hooking widget model ${modelId} for cell index ${cellIndex}`
+      );
       reactiveWidgets[modelId].hooked = true;
       void widgetManager
         .get_model(modelId)
@@ -277,11 +326,33 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
     ws.onmessage = async (msg) => {
       const { action, payload }: IExecutionMessage = JSON.parse(msg.data);
       switch (action) {
+        case 'execution_output': {
+          // An output produced by a cell which is still executing: display
+          // it right away, it will be replaced by the rendering of the final
+          // cell outputs when the cell is done.
+          const { cell_index, output } = payload;
+
+          const element = document.querySelector(
+            `[cell-index="${cell_index + 1}"]`
+          );
+          if (!element) {
+            console.error(`No element found for cell index ${cell_index + 1}`);
+            return;
+          }
+          addLiveOutput(getLiveOutputArea(cell_index, element), output);
+          break;
+        }
         case 'execution_result': {
           const { cell_index, total_cell } = payload;
           totalCell = total_cell;
 
-          const element = document.querySelector(`[cell-index="${cell_index + 1}"]`);
+          // The cell is done executing: the outputs streamed while it was
+          // running are replaced by the rendering of all its outputs.
+          disposeLiveOutputArea(cell_index);
+
+          const element = document.querySelector(
+            `[cell-index="${cell_index + 1}"]`
+          );
           if (!element) {
             console.error(`No element found for cell index ${cell_index + 1}`);
             return;
@@ -305,7 +376,9 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
           }
 
           if (outputWidgets[cell_index]) {
-            console.log(`Clearing previous outputs for cell index ${cell_index + 1}`);
+            console.log(
+              `Clearing previous outputs for cell index ${cell_index + 1}`
+            );
             for (const { widget, modelId } of outputWidgets[cell_index]) {
               if (modelId && reactiveWidgets[modelId]) {
                 reactiveWidgets[modelId].pending = true;
@@ -321,8 +394,13 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
           }
 
           for (const outputData of payload.output_cell.outputs) {
-            const modelId = (outputData?.data as any)?.[WIDGET_VIEW_MIMETYPE]?.model_id;
-            console.log(`Processing output data for cell index ${cell_index + 1}, modelId: ${modelId}`);
+            const modelId = (outputData?.data as any)?.[WIDGET_VIEW_MIMETYPE]
+              ?.model_id;
+            console.log(
+              `Processing output data for cell index ${
+                cell_index + 1
+              }, modelId: ${modelId}`
+            );
 
             let model = null;
             let widget = null;
@@ -336,8 +414,12 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
               });
               Widget.attach(widget, element as HTMLElement);
               model.add(outputData);
-            } else if (reactiveWidgets[modelId] && reactiveWidgets[modelId].cellIdx === cell_index && reactiveWidgets[modelId].pending) {
-              console.log("Reattaching existing widget.")
+            } else if (
+              reactiveWidgets[modelId] &&
+              reactiveWidgets[modelId].cellIdx === cell_index &&
+              reactiveWidgets[modelId].pending
+            ) {
+              console.log('Reattaching existing widget.');
               widget = reactiveWidgets[modelId].widget;
               (element as any).moveBefore(widget.node, null);
               widget.node.style.display = '';
@@ -351,11 +433,19 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
               });
 
               if (!widget) {
-                console.error(`Failed to create widget for cell index ${cell_index + 1}, modelId: ${modelId}`);
+                console.error(
+                  `Failed to create widget for cell index ${
+                    cell_index + 1
+                  }, modelId: ${modelId}`
+                );
                 continue;
               }
 
-              reactiveWidgets[modelId] = { cellIdx: cell_index, widget, hooked: false };
+              reactiveWidgets[modelId] = {
+                cellIdx: cell_index,
+                widget,
+                hooked: false
+              };
               hookWidgetModel(modelId);
             }
 
@@ -363,9 +453,15 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
             outputWidgets[cell_index].push({ widget, modelId });
           }
 
-          for (const [modelId, { cellIdx, widget, pending }] of Object.entries(reactiveWidgets)) {
+          for (const [modelId, { cellIdx, widget, pending }] of Object.entries(
+            reactiveWidgets
+          )) {
             if (pending && cellIdx === cell_index) {
-              console.log(`Removing remaining pending widget for modelId ${modelId} at cell index ${cellIdx + 1}`);
+              console.log(
+                `Removing remaining pending widget for modelId ${modelId} at cell index ${
+                  cellIdx + 1
+                }`
+              );
               Widget.detach(widget);
               widget.dispose();
               delete reactiveWidgets[modelId];

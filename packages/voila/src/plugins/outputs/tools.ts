@@ -28,6 +28,35 @@ export interface IExecutionErrorMessage {
 }
 
 /**
+ * A `clear_output` message, streamed along with the cell outputs since it
+ * changes how they are displayed.
+ */
+export interface IClearOutput {
+  output_type: 'clear_output';
+  wait?: boolean;
+}
+
+/**
+ * An output streamed from a cell which is still executing.
+ *
+ * `update_display_data` messages are streamed with their `transient` field,
+ * which identifies the outputs they update.
+ */
+export type IStreamedOutput = IOutput | IClearOutput;
+
+/**
+ * Interface representing the structure of a streamed output message, sent
+ * for every output of a cell while it is still executing.
+ */
+export interface IExecutionOutputMessage {
+  action: 'execution_output';
+  payload: {
+    cell_index: number;
+    output: IStreamedOutput;
+  };
+}
+
+/**
  * Interface representing a received widget model
  * containing output and execution models.
  */
@@ -39,7 +68,8 @@ export interface IReceivedWidgetModel {
 }
 export type IExecutionMessage =
   | IExecutionResultMessage
-  | IExecutionErrorMessage;
+  | IExecutionErrorMessage
+  | IExecutionOutputMessage;
 
 export function getExecutionURL(kernelId?: string): string {
   const wsUrl = PageConfig.getWsUrl();
@@ -149,6 +179,108 @@ export function createOutputArea({
 }
 
 /**
+ * The output area displaying the outputs of a cell which is still executing.
+ *
+ * It is used to display the outputs as the kernel produces them, and is
+ * replaced by the rendering of the final cell outputs once the cell is done
+ * executing.
+ */
+export interface ILiveOutputArea {
+  model: OutputAreaModel;
+  area: SimplifiedOutputArea;
+  /**
+   * Indexes of the outputs displayed under each display id, used to update
+   * the outputs an `update_display_data` message refers to.
+   */
+  displayIds: Map<string, number[]>;
+  dispose(): void;
+}
+
+/**
+ * Creates the output area displaying the outputs of a still executing cell.
+ *
+ * @param rendermime - The render mime registry.
+ * @param parent - The parent HTML element where the output area will be appended.
+ * @returns The created live output area.
+ */
+export function createLiveOutputArea({
+  rendermime,
+  parent
+}: {
+  rendermime: IRenderMimeRegistry;
+  parent: Element;
+}): ILiveOutputArea {
+  const [model, area] = createOutputArea({ rendermime, parent });
+  const wrapper = area.node.parentElement;
+  return {
+    model,
+    area,
+    displayIds: new Map<string, number[]>(),
+    dispose: (): void => {
+      Widget.detach(area);
+      area.dispose();
+      model.dispose();
+      wrapper?.remove();
+    }
+  };
+}
+
+/**
+ * Displays an output streamed from a still executing cell.
+ *
+ * This mirrors the way JupyterLab handles the IOPub messages of a cell it is
+ * executing: contiguous stream outputs of the same name are combined,
+ * `clear_output` messages clear the displayed outputs (possibly after the
+ * next output, when `wait` is set) and `update_display_data` messages update
+ * the outputs previously displayed under the same display id.
+ *
+ * @param liveOutputArea - The output area of the executing cell.
+ * @param output - The streamed output.
+ */
+export function addLiveOutput(
+  liveOutputArea: ILiveOutputArea,
+  output: IStreamedOutput
+): void {
+  const { model, displayIds } = liveOutputArea;
+  // `transient` is not part of the `IOutput` type, but it is what identifies
+  // the outputs an `update_display_data` message refers to.
+  const displayId: string | undefined = (output as any).transient?.display_id;
+
+  switch (output.output_type) {
+    case 'execute_result':
+    case 'display_data':
+    case 'stream':
+    case 'error':
+      model.add(output as IOutput);
+      if (displayId && output.output_type === 'display_data') {
+        const indexes = displayIds.get(displayId) ?? [];
+        indexes.push(model.length - 1);
+        displayIds.set(displayId, indexes);
+      }
+      break;
+    case 'clear_output':
+      displayIds.clear();
+      model.clear((output as IClearOutput).wait ?? false);
+      break;
+    case 'update_display_data': {
+      const indexes = displayId ? displayIds.get(displayId) : undefined;
+      if (indexes) {
+        const displayData = {
+          ...output,
+          output_type: 'display_data'
+        } as IOutput;
+        for (const index of indexes) {
+          model.set(index, displayData);
+        }
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/**
  * Creates an output area model and attaches the output area to a specified parent element.
  *
  * @param model - The output model to be rendered.
@@ -188,7 +320,6 @@ export function createReactiveOutput({
   Widget.attach(output, parent);
 
   return output;
-
 }
 
 export function createSkeleton(): void {
