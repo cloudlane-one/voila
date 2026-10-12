@@ -2,7 +2,7 @@ import asyncio
 import json
 import sys
 import traceback
-from typing import Awaitable, List, Tuple, Union
+from typing import Any, Awaitable, Dict, List, Tuple, Union
 
 import nbformat
 from jupyter_core.utils import ensure_async
@@ -145,8 +145,38 @@ if JUPYTER_SERVER_2:
                     config=execution_data["config"],
                     show_tracebacks=execution_data["show_tracebacks"],
                 )
+                # Stream the outputs of the cells to the client while they are
+                # executing, so that they are displayed as they are produced.
+                executor.output_callback = self._send_output
                 executor.kc = await executor.async_start_new_kernel_client()
             return self._executor, nb
+
+        def _send_output(self, cell_index: int, output: Dict[str, Any]) -> None:
+            """Send an output of a still running cell to the client.
+
+            This is called by the executor while it processes the IOPub
+            messages of the cell, so the outputs of a cell are always
+            received in order, and before the execution result of that cell.
+
+            Args:
+                cell_index (int): Index of the cell producing the output.
+                output (Dict[str, Any]): Content of the IOPub message,
+                    extended with its ``output_type``.
+            """
+            try:
+                self.write_message(
+                    {
+                        "action": "execution_output",
+                        "payload": {"cell_index": cell_index, "output": output},
+                    }
+                )
+            except Exception:
+                # Failing to stream an output must not abort the execution of
+                # the notebook: the final cell outputs are sent anyway.
+                self.log.exception(
+                    "Error at server while streaming an output of cell %s",
+                    cell_index,
+                )
 
         async def _execute_cells(
             self,
