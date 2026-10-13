@@ -218,6 +218,37 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
     const liveOutputAreas: { [cellIdx: number]: ILiveOutputArea } = {};
     let totalCell = 0;
 
+    /**
+     * The cells whose outputs are not up to date with the current widget
+     * values: they are greyed out and disabled from the moment a re-execution
+     * covering them is requested until their own new outputs arrive.
+     *
+     * The cells which a re-execution stopped before reaching are therefore
+     * left greyed out: a cell raising an exception stops the execution of the
+     * cells below it, which keep outputs computed from the previous widget
+     * values until they are re-executed.
+     */
+    const staleCells = new Set<number>();
+
+    /**
+     * Grey out the outputs of the cell at `cellIndex` and disable them when
+     * they are stale, and display them normally again once they are not.
+     */
+    const updateStaleCell = (cellIndex: number): void => {
+      const element = document.querySelector(`[cell-index="${cellIndex + 1}"]`);
+      if (!element) {
+        console.error(`No element found for cell index ${cellIndex + 1}`);
+        return;
+      }
+      element.classList.toggle('voila-stale-cell', staleCells.has(cellIndex));
+    };
+
+    const updateStaleCells = (cellIndexes: Iterable<number>): void => {
+      for (const cellIndex of cellIndexes) {
+        updateStaleCell(cellIndex);
+      }
+    };
+
     const ws = new WebSocket(getExecutionURL(kernelId));
 
     /**
@@ -273,6 +304,12 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
           payload: { kernel_id: kernelId, cell_ids: cellIds }
         })
       );
+      // The requested cells are not up to date with the widget state anymore:
+      // grey out and disable their outputs until they have been re-executed.
+      for (const idx of cellIds) {
+        staleCells.add(idx);
+      }
+      updateStaleCells(cellIds);
     };
 
     /**
@@ -345,6 +382,10 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
         case 'execution_result': {
           const { cell_index, total_cell } = payload;
           totalCell = total_cell;
+
+          // The cell has been re-executed: its outputs are up to date again.
+          staleCells.delete(cell_index);
+          updateStaleCell(cell_index);
 
           // The cell is done executing: the outputs streamed while it was
           // running are replaced by the rendering of all its outputs.
@@ -472,6 +513,11 @@ export const renderOutputsReactivelyPlugin: JupyterFrontEndPlugin<void> = {
         }
         case 'execution_error': {
           console.error(`Execution error: ${payload.error}`);
+          // The rejected re-executions will not be answered: nothing is
+          // reloading anymore, so no output is greyed out anymore either.
+          const reloading = [...staleCells];
+          staleCells.clear();
+          updateStaleCells(reloading);
           break;
         }
         default:

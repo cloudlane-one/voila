@@ -75,6 +75,16 @@
       background-color: var(--jp-layout-color2);
     }
 
+    /* The outputs of a cell which are not up to date with the current widget
+       values: they are greyed out and disabled until the cell has been
+       re-executed. */
+    .voila-stale-cell {
+      opacity: 0.4;
+      filter: grayscale(100%);
+      pointer-events: none;
+      user-select: none;
+    }
+
     @keyframes shine-lines {
       0% {
         background-position: -100px;
