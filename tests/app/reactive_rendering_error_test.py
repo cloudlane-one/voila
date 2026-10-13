@@ -1,5 +1,5 @@
-# test that a kernel-side exception other than HaltExecution terminates
-# the execution in reactive rendering mode.
+# test that a kernel-side exception terminates the execution in
+# reactive rendering mode.
 import asyncio
 import json
 import os
@@ -71,8 +71,8 @@ def output_texts(payload):
 async def test_error_terminates_execution(
     http_server_client, base_url, http_server_port
 ):
-    """A kernel-side exception other than HaltExecution terminates the
-    execution: the following cells are not executed."""
+    """A kernel-side exception terminates the execution: the following
+    cells are not executed."""
     kernel_id = await get_kernel_id(http_server_client, base_url)
     conn = await connect_execution_websocket(base_url, http_server_port, kernel_id)
     try:
