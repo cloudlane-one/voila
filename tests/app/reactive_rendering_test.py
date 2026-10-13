@@ -163,9 +163,7 @@ async def test_execute_cells_missing_cell_ids(
     conn = await connect_execution_websocket(base_url, http_server_port, kernel_id)
     try:
         await conn.write_message(
-            json.dumps(
-                {"action": "execute_cells", "payload": {"kernel_id": kernel_id}}
-            )
+            json.dumps({"action": "execute_cells", "payload": {"kernel_id": kernel_id}})
         )
         message = json.loads(await asyncio.wait_for(conn.read_message(), TIMEOUT))
         assert message["action"] == "execution_error"

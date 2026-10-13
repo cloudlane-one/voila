@@ -65,48 +65,6 @@ class ENV_VARIABLE(StringEnum):
     SERVER_PROTOCOL = "SERVER_PROTOCOL"
 
 
-class HaltExecution(Exception):
-    """Exception used to gracefully pause the notebook execution in
-    reactive rendering mode.
-
-    When this exception is raised kernel-side while a cell is being
-    executed, the execution of the remaining cells is paused and a
-    *Continue* button is displayed in the cell output instead of the
-    exception stack trace. Clicking the button triggers the re-execution
-    of the current cell and all the cells below.
-
-    Args:
-        continue_button_label (str): The label of the continue button
-            displayed in the cell output. Defaults to ``"Continue"``.
-    """
-
-    DEFAULT_CONTINUE_BUTTON_LABEL = "Continue"
-
-    def __init__(self, continue_button_label: str = DEFAULT_CONTINUE_BUTTON_LABEL):
-        self.continue_button_label = continue_button_label
-        super().__init__(continue_button_label)
-
-    @classmethod
-    def from_cell_execution_error(cls, error) -> "HaltExecution":
-        """Recreate a `HaltExecution` from a
-        `nbclient.exceptions.CellExecutionError`.
-
-        When the exception is raised kernel-side, only its string
-        representation travels through the kernel messaging protocol, so
-        the button label is recovered from the error value.
-
-        Args:
-            error: The `CellExecutionError` wrapping the kernel-side
-                `HaltExecution` exception.
-
-        Returns:
-            HaltExecution: A local copy of the exception, carrying the
-            same `continue_button_label` attribute.
-        """
-        label = getattr(error, "evalue", None) or cls.DEFAULT_CONTINUE_BUTTON_LABEL
-        return cls(continue_button_label=label)
-
-
 def get_server_root_dir(settings):
     # notebook >= 5.0.0 has this in the settings
     if "server_root_dir" in settings:

@@ -785,13 +785,14 @@ or using `voila.json` file
 }
 ```
 
-In reactive rendering mode, a notebook can gracefully pause the execution of the remaining cells by raising a `voila.utils.HaltExecution` exception. Instead of the stack trace, a _Continue_ button is displayed in the cell output; clicking it resumes the execution of the current cell and all the cells below. The button label can be customized with the `continue_button_label` attribute:
+#### Graceful exceptions and re-execution triggers
 
-```python
-from voila.utils import HaltExecution
+Voila does not interpret the exceptions raised by the cells of a notebook: whatever the exception raised kernel-side while executing a cell, the execution of the remaining cells is stopped and the outputs of the faulty cell are displayed in the dashboard. There is no exception type which Voila special-cases to pause a notebook, and no API for pausing or resuming one.
 
-raise HaltExecution(continue_button_label="Load more results")
-```
+Pausing a dashboard gracefully — i.e. stopping the execution without showing a stack trace, and giving the user a way to resume it — is therefore the responsibility of the kernel-side code running in the notebook:
+
+- **Graceful exceptions.** A kernel-side helper can stop the execution by raising its own exception, and control the rendering of that exception's traceback: IPython renders the traceback returned by a `_render_traceback_` method when the exception defines one, so an exception whose `_render_traceback_` renders nothing is displayed without a traceback. [Mercury](https://github.com/mljar/mercury/blob/master/mercury/stop.py)'s `StopExecution` is an example of such an exception. Voila still sees the cell as having failed, which is precisely what stops the execution of the remaining cells; note that, unless `--show_tracebacks=True` is set, the error output is replaced by the generic `There was an error when executing cell [n]` message.
+- **Re-execution triggers.** Resuming the notebook requires no Voila-specific API: as described above, updating a widget rendered in a cell output automatically re-executes the cell which rendered that widget, and all the cells below it. A button displayed in the output of the paused cell (e.g. an `ipywidgets` `Button` passed to `display()`) is therefore enough to resume the execution when it is clicked. Deciding to render such a trigger — before raising the exception which pauses the execution — and handling its clicks, is part of the kernel-side code.
 
 :::{warning}
 Reactive rendering mode is mutually exclusive with the progressive rendering mode and is incompatible with the preheated kernels functionality.

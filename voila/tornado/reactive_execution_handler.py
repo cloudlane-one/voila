@@ -8,12 +8,10 @@ import nbformat
 from jupyter_core.utils import ensure_async
 from jupyter_server.base.handlers import JupyterHandler
 from nbclient.exceptions import CellExecutionError
-from nbformat.v4 import new_code_cell
 from tornado.web import HTTPError
 from tornado.websocket import WebSocketHandler
 
 from voila.execute import VoilaExecutor, strip_code_cell_warnings
-from voila.utils import HaltExecution
 
 try:
     JUPYTER_SERVER_2 = True
@@ -34,11 +32,11 @@ if JUPYTER_SERVER_2:
         The websocket connection is kept open after the full execution so
         that cells can be re-executed on demand.
 
-        When a cell raises a kernel-side
-        :class:`voila.utils.HaltExecution` exception, the execution is
-        gracefully paused and a *Continue* button widget is displayed in the
-        cell output instead of the stack trace. Any other kernel-side
-        exception terminates the execution.
+        The exceptions raised by the cells are not interpreted: whatever the
+        kernel-side exception, the execution of the remaining cells is stopped
+        and the error output of the cell is sent to the client. Gracefully
+        pausing a notebook, and offering a way to resume it, is the
+        responsibility of the kernel-side code (see ``docs/customize.md``).
         """
 
         _execution_data = {}
@@ -88,9 +86,7 @@ if JUPYTER_SERVER_2:
                 # coroutines would otherwise execute cells concurrently
                 # on the same kernel.
                 async with self._execution_lock:
-                    await self._execute_cells(
-                        executor, nb, list(range(len(nb.cells)))
-                    )
+                    await self._execute_cells(executor, nb, list(range(len(nb.cells))))
             elif action == "execute_cells":
                 request_kernel_id = payload.get("kernel_id")
                 if request_kernel_id != self._kernel_id:
@@ -195,7 +191,11 @@ if JUPYTER_SERVER_2:
             """
             total_cell = len(nb.cells)
             for cell_idx in cell_ids:
-                if not isinstance(cell_idx, int) or cell_idx < 0 or cell_idx >= total_cell:
+                if (
+                    not isinstance(cell_idx, int)
+                    or cell_idx < 0
+                    or cell_idx >= total_cell
+                ):
                     await self.write_message(
                         {
                             "action": "execution_error",
@@ -212,28 +212,18 @@ if JUPYTER_SERVER_2:
                 except TimeoutError:
                     output_cell = input_cell
 
-                except CellExecutionError as e:
+                except CellExecutionError:
+                    # A kernel-side exception terminated the execution: the
+                    # cell already holds the outputs produced before (and
+                    # including) the exception, send them as they are.
                     self.log.exception(
                         "Error at server while executing cell: %r", input_cell
                     )
-                    if e.ename == HaltExecution.__name__:
-                        # Gracefully pause the execution: display a
-                        # *Continue* button instead of the stack trace.
-                        halt_error = HaltExecution.from_cell_execution_error(e)
-                        output_cell = await self._continue_button_cell(
-                            executor,
-                            input_cell,
-                            cell_idx,
-                            halt_error.continue_button_label,
-                        )
-                    else:
-                        if executor.should_strip_error():
-                            strip_code_cell_warnings(input_cell)
-                            executor.strip_code_cell_errors(input_cell)
-                        output_cell = input_cell
-                    # Do not run the following cells, either because the
-                    # execution is paused (`HaltExecution`) or because a
-                    # kernel-side exception terminated it.
+                    if executor.should_strip_error():
+                        strip_code_cell_warnings(input_cell)
+                        executor.strip_code_cell_errors(input_cell)
+                    output_cell = input_cell
+                    # Do not run the following cells.
                     stop_execution = True
 
                 except Exception as e:
@@ -281,41 +271,6 @@ if JUPYTER_SERVER_2:
                     )
                 if stop_execution:
                     break
-
-        async def _continue_button_cell(
-            self,
-            executor: VoilaExecutor,
-            input_cell: nbformat.NotebookNode,
-            cell_index: int,
-            continue_button_label: str,
-        ) -> nbformat.NotebookNode:
-            """Build the output cell for a halted cell: a *Continue* button
-            widget is displayed instead of the exception stack trace.
-
-            The button is a regular `ipywidgets` button, so it benefits from
-            the default reactive re-execution mechanism: clicking it triggers
-            the re-execution of the current cell and all the cells below.
-            """
-            button_cell = new_code_cell(
-                source=(
-                    "from ipywidgets.widgets.widget_button import Button\n"
-                    "from IPython.display import display\n"
-                    f"_voila_continue_button = Button(description={continue_button_label!r})\n"
-                    "display(_voila_continue_button)"
-                )
-            )
-            try:
-                await executor.execute_cell(
-                    button_cell, None, cell_index, store_history=False
-                )
-            except Exception:
-                self.log.exception(
-                    "Error at server while creating the continue button"
-                )
-                return input_cell
-            output_cell = input_cell.copy()
-            output_cell["outputs"] = button_cell.get("outputs", [])
-            return output_cell
 
         def on_close(self) -> None:
             self._execution_data.pop(self._kernel_id, None)
