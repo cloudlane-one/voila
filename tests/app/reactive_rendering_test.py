@@ -90,6 +90,22 @@ async def test_page_config(http_server_client, base_url):
     assert "cell 0" not in html_text
 
 
+async def test_stale_outputs_are_greyed_out_and_disabled(http_server_client, base_url):
+    """The page carries the styles greying out and disabling the outputs of
+    the cells which are not up to date with the current widget values: the
+    client adds the `voila-stale-cell` class to the cells it is reloading,
+    and to the cells which a stopped re-execution left behind."""
+    response = await http_server_client.fetch(base_url, request_timeout=180)
+    html_text = response.body.decode("utf-8")
+    match = re.search(r"\.voila-stale-cell\s*\{([^}]*)\}", html_text)
+    assert match is not None, "no style for the cells with stale outputs"
+    declarations = match.group(1)
+    # The outputs are greyed out...
+    assert "opacity" in declarations
+    # ...and disabled.
+    assert "pointer-events: none" in declarations
+
+
 async def test_execute(http_server_client, base_url, http_server_port):
     """All cells are executed through the execution websocket."""
     kernel_id = await get_kernel_id(http_server_client, base_url)

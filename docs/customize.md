@@ -766,6 +766,8 @@ Progressive rendering mode is incompatible with the preheated kernels functional
 
 The outputs of a cell are also streamed while the cell is executing: a cell producing several outputs in sequence (e.g. the progress of a loop, or a progress bar updated with `IPython.display.clear_output`) displays them as they are produced, instead of displaying all of them at once when the cell completes. The outputs which the final rendering of the cell hides are not streamed either: outputs captured by an `ipywidgets.Output` widget are sent over the widget channel as usual, widget views are rendered from the final cell outputs, and stderr streams and tracebacks are only streamed when `--show_tracebacks=True` is set.
 
+The outputs which are not up to date with the current widget values are greyed out and disabled: when a widget update triggers the re-execution of the cell which rendered the widget and of all the cells below it, the outputs displayed in those cells stay visible but are greyed out and cannot be interacted with, until the cell they belong to has been re-executed. A cell whose outputs were not recomputed keeps that look: when a cell raises an exception, the execution of the cells below it is stopped, and the outputs of those cells — computed from the previous widget values, and which the stopped execution did not refresh — stay greyed out until they are re-executed.
+
 To start Voilà with reactive rendering mode using CLI:
 
 ```bash
