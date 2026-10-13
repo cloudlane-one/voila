@@ -287,5 +287,5 @@ class VoilaConfiguration(traitlets.config.Configurable):
     extra_labextensions_path = List(
         Unicode(),
         config=True,
-        help="""Extra paths to look for federated JupyterLab extensions""""",
+        help="""Extra paths to look for federated JupyterLab extensions""" "",
     )

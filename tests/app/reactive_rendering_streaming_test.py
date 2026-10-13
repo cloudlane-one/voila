@@ -89,10 +89,7 @@ def final_outputs(messages, cell_index):
 
 def message_time(messages, action, cell_index):
     for timestamp, data in messages:
-        if (
-            data["action"] == action
-            and data["payload"]["cell_index"] == cell_index
-        ):
+        if data["action"] == action and data["payload"]["cell_index"] == cell_index:
             return timestamp
     raise AssertionError(f"No {action} message for cell {cell_index}")
 
@@ -119,15 +116,16 @@ async def test_outputs_are_streamed_while_a_cell_is_executing(
             "stream",
             "stream",
         ]
-        assert "".join(
-            output.get("text", "") for output in streamed_outputs(messages, 0)
-        ) == "first output\nsecond output\n"
+        assert (
+            "".join(output.get("text", "") for output in streamed_outputs(messages, 0))
+            == "first output\nsecond output\n"
+        )
 
         # The first output is received while the cell is still sleeping,
         # well before its execution result.
-        time_to_result = message_time(
-            messages, "execution_result", 0
-        ) - message_time(messages, "execution_output", 0)
+        time_to_result = message_time(messages, "execution_result", 0) - message_time(
+            messages, "execution_output", 0
+        )
         assert time_to_result > CELL_0_SLEEP / 2, (
             "The first output of the cell was not received while the cell was "
             f"executing (it was received {time_to_result:.2f}s before the "
@@ -135,9 +133,10 @@ async def test_outputs_are_streamed_while_a_cell_is_executing(
         )
 
         # Streamed outputs are the outputs of the final cell result.
-        assert "".join(
-            output.get("text", "") for output in final_outputs(messages, 0)
-        ) == "first output\nsecond output\n"
+        assert (
+            "".join(output.get("text", "") for output in final_outputs(messages, 0))
+            == "first output\nsecond output\n"
+        )
     finally:
         conn.close()
 
@@ -188,9 +187,7 @@ async def read_until_execution_result(conn, cell_index, timeout=TIMEOUT):
             return messages
 
 
-async def test_clear_output_is_streamed(
-    http_server_client, base_url, http_server_port
-):
+async def test_clear_output_is_streamed(http_server_client, base_url, http_server_port):
     """`clear_output` messages are streamed along with the outputs, so that
     the client can replace the outputs displayed by a running cell."""
     kernel_id = await get_kernel_id(http_server_client, base_url)
@@ -199,9 +196,7 @@ async def test_clear_output_is_streamed(
         messages = await execute_notebook(conn, kernel_id)
 
         # The fourth cell clears its outputs before printing each iteration.
-        assert [
-            output["output_type"] for output in streamed_outputs(messages, 3)
-        ] == [
+        assert [output["output_type"] for output in streamed_outputs(messages, 3)] == [
             "clear_output",
             "stream",
             "clear_output",
@@ -215,16 +210,20 @@ async def test_clear_output_is_streamed(
             if output["output_type"] == "clear_output"
         ]
         assert all(output["wait"] for output in clear_outputs)
-        assert "".join(
-            output.get("text", "")
-            for output in streamed_outputs(messages, 3)
-            if output["output_type"] == "stream"
-        ) == "iteration 0\niteration 1\niteration 2\n"
+        assert (
+            "".join(
+                output.get("text", "")
+                for output in streamed_outputs(messages, 3)
+                if output["output_type"] == "stream"
+            )
+            == "iteration 0\niteration 1\niteration 2\n"
+        )
 
         # Only the last iteration is kept by the final cell output.
-        assert "".join(
-            output.get("text", "") for output in final_outputs(messages, 3)
-        ) == "iteration 2\n"
+        assert (
+            "".join(output.get("text", "") for output in final_outputs(messages, 3))
+            == "iteration 2\n"
+        )
     finally:
         conn.close()
 
@@ -248,8 +247,9 @@ async def test_reexecution_streams_the_outputs_again(
         )
         messages = await read_until_execution_result(conn, 0)
 
-        assert "".join(
-            output.get("text", "") for output in streamed_outputs(messages, 0)
-        ) == "first output\nsecond output\n"
+        assert (
+            "".join(output.get("text", "") for output in streamed_outputs(messages, 0))
+            == "first output\nsecond output\n"
+        )
     finally:
         conn.close()

@@ -86,9 +86,7 @@ if JUPYTER_SERVER_2:
                 # coroutines would otherwise execute cells concurrently
                 # on the same kernel.
                 async with self._execution_lock:
-                    await self._execute_cells(
-                        executor, nb, list(range(len(nb.cells)))
-                    )
+                    await self._execute_cells(executor, nb, list(range(len(nb.cells))))
             elif action == "execute_cells":
                 request_kernel_id = payload.get("kernel_id")
                 if request_kernel_id != self._kernel_id:
@@ -193,7 +191,11 @@ if JUPYTER_SERVER_2:
             """
             total_cell = len(nb.cells)
             for cell_idx in cell_ids:
-                if not isinstance(cell_idx, int) or cell_idx < 0 or cell_idx >= total_cell:
+                if (
+                    not isinstance(cell_idx, int)
+                    or cell_idx < 0
+                    or cell_idx >= total_cell
+                ):
                     await self.write_message(
                         {
                             "action": "execution_error",
