@@ -17,6 +17,8 @@ import { FilterFileBrowserModel } from '@jupyterlab/filebrowser';
 import { Widget } from '@lumino/widgets';
 
 import { VoilaFileBrowser } from './browser';
+import { GitClient } from './git';
+import { VoilaGitBar } from './gitbar';
 
 /**
  * The voila file browser provider.
@@ -50,6 +52,14 @@ export const treeWidgetPlugin: JupyterFrontEndPlugin<void> = {
 
     fb.showFileCheckboxes = false;
     fb.showLastModifiedColumn = false;
+
+    if (PageConfig.getOption('gitUi') === 'true') {
+      const gitBar = new VoilaGitBar({
+        model: fbModel,
+        client: new GitClient(app.serviceManager.serverSettings)
+      });
+      app.shell.add(gitBar, 'top', { rank: 0 });
+    }
 
     const spacerTop = new Widget();
     spacerTop.addClass('spacer-top-widget');

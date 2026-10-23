@@ -80,6 +80,12 @@ class TornadoVoilaTreeHandler(VoilaTreeHandler):
 
             page_config["jupyterLabTheme"] = theme_arg
             page_config["frontend"] = "voila"
+            if self.voila_configuration.git_ui:
+                # The git bar sends POST requests, which tornado protects with
+                # the `_xsrf` cookie. The page has to carry that cookie before it
+                # can act, so it is set here; the frontend echoes it back in the
+                # X-XSRFToken header of its requests.
+                self.set_cookie("_xsrf", self.xsrf_token)
             page_config["query"] = self.request.query
             template_name = "tree-lab.html" if not classic_tree else "tree.html"
 

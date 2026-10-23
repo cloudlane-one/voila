@@ -133,6 +133,7 @@ def get_page_config(
         "extensionConfig": voila_configuration.extension_config,
         "progressiveRendering": voila_configuration.progressive_rendering,
         "reactiveRendering": voila_configuration.reactive_rendering,
+        "gitUi": voila_configuration.git_ui,
     }
     mathjax_config = settings.get("mathjax_config", "TeX-AMS_CHTML-full,Safe")
     mathjax_url = settings.get(

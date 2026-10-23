@@ -21,6 +21,11 @@ from jupyter_server.serverapp import ServerApp
 from .tornado.execution_request_handler import ExecutionRequestHandler, JUPYTER_SERVER_2
 from .tornado.reactive_execution_handler import ReactiveExecutionHandler
 from .tornado.contentshandler import VoilaContentsHandler
+from .tornado.githandler import (
+    VoilaGitCheckoutHandler,
+    VoilaGitPullHandler,
+    VoilaGitStatusHandler,
+)
 from traitlets.config import (
     JSONFileConfigLoader,
     PyFileConfigLoader,
@@ -202,6 +207,31 @@ def _load_jupyter_server_extension(server_app: ServerApp):
                 ReactiveExecutionHandler,
             )
         )
+    if voila_configuration.git_ui:
+        git_handler_conf = {
+            "root_dir": os.path.expanduser(get_server_root_dir(web_app.settings)),
+            "git_executable": voila_configuration.git_executable,
+        }
+        handlers.extend(
+            [
+                (
+                    url_path_join(base_url, r"/voila/api/git/status"),
+                    VoilaGitStatusHandler,
+                    git_handler_conf,
+                ),
+                (
+                    url_path_join(base_url, r"/voila/api/git/checkout"),
+                    VoilaGitCheckoutHandler,
+                    git_handler_conf,
+                ),
+                (
+                    url_path_join(base_url, r"/voila/api/git/pull"),
+                    VoilaGitPullHandler,
+                    git_handler_conf,
+                ),
+            ]
+        )
+
     web_app.add_handlers(host_pattern, handlers)
 
     web_app.add_handlers(

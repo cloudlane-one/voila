@@ -40,6 +40,20 @@ class VoilaConfiguration(traitlets.config.Configurable):
         config=True,
         help=("Use the jinja2-based tree page instead of the new JupyterLab-based one"),
     )
+    git_ui = Bool(
+        False,
+        config=True,
+        help=(
+            "Show a git status bar in the tree page, with actions to switch "
+            "branch and pull. Disabled by default, because it lets the page "
+            "run git commands in the served directory."
+        ),
+    )
+    git_executable = Unicode(
+        "git",
+        config=True,
+        help=("The git executable the tree page's git bar runs."),
+    )
     resources = Dict(
         allow_none=True,
         config=True,

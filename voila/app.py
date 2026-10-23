@@ -100,6 +100,11 @@ from .static_file_handler import (
     MultiStaticFileHandler,
     TemplateStaticFileHandler,
 )
+from .tornado.githandler import (
+    VoilaGitCheckoutHandler,
+    VoilaGitPullHandler,
+    VoilaGitStatusHandler,
+)
 from .tornado.handler import TornadoVoilaHandler
 from .tornado.treehandler import TornadoVoilaTreeHandler
 from .utils import (
@@ -903,6 +908,30 @@ class Voila(Application):
                     ),
                 ]
             )
+            if self.voila_configuration.git_ui:
+                git_handler_conf = {
+                    "root_dir": self.root_dir,
+                    "git_executable": self.voila_configuration.git_executable,
+                }
+                handlers.extend(
+                    [
+                        (
+                            url_path_join(self.server_url, r"/voila/api/git/status"),
+                            VoilaGitStatusHandler,
+                            git_handler_conf,
+                        ),
+                        (
+                            url_path_join(self.server_url, r"/voila/api/git/checkout"),
+                            VoilaGitCheckoutHandler,
+                            git_handler_conf,
+                        ),
+                        (
+                            url_path_join(self.server_url, r"/voila/api/git/pull"),
+                            VoilaGitPullHandler,
+                            git_handler_conf,
+                        ),
+                    ]
+                )
         return handlers
 
     def start(self):
