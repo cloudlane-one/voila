@@ -48,6 +48,46 @@ The page served by Voilà will now contain a list of any notebooks in the
 directory. By clicking on one, you will trigger Voilà's conversion process.
 A new Jupyter kernel will be created for each notebook you click.
 
+### Git status bar in the tree page
+
+When the directory you serve is part of a git repository, the tree page can
+show a small bar with the state of that repository:
+
+- the current branch (or the commit, when the head is detached),
+- the head commit and the tag of that commit, if it has one,
+- the state of the worktree (clean, or how many changed files),
+- how many commits the remote has that the branch does not, and their titles.
+
+The bar also lets you switch to another local or remote branch and pull the
+current one. Pulling is a merge, never a rebase, and it is refused while the
+worktree has uncommitted changes; when it fails, for instance on a conflict,
+the repository is put back where it was and the error git reported is shown.
+There is no push, and no diff or history view.
+
+The bar is off by default, because it exposes endpoints that run git in the
+served directory. Turn it on with:
+
+```bash
+voila --VoilaConfiguration.git_ui=True
+```
+
+or, as a server extension:
+
+```bash
+jupyter server --ServerApp.jpserver_extensions="voila.server_extension=True" \
+  --VoilaConfiguration.git_ui=True
+```
+
+The endpoints are only registered when the option is on, and they require an
+authenticated user. Reads fetch the remote of the current branch so that the
+number of commits to pull is not stale; a remote that cannot be reached is not
+an error, the counts then describe the last successful fetch. Repository hooks
+are disabled for the commands the bar runs. If git lives outside `PATH`, give
+its path with `--VoilaConfiguration.git_executable`.
+
+The bar is part of the JupyterLab-based tree page; the classic tree page
+(`--VoilaConfiguration.classic_tree=True`) does not show it.
+
 ## As a Jupyter server extension
 
 You can also use Voilà from within a Jupyter server (e.g., after running

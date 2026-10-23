@@ -37,6 +37,88 @@ div#rendered_cells {
   outline-style: none;
 }
 
+.voila-GitBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1000px;
+  margin: 8px auto 0;
+  padding: 6px 12px;
+  color: var(--jp-ui-font-color1);
+  font-size: var(--jp-ui-font-size1);
+  background-color: var(--jp-layout-color1);
+  border-style: solid;
+  border-width: var(--jp-border-width);
+  border-color: var(--jp-border-color0);
+  border-radius: var(--jp-border-radius);
+}
+
+.voila-GitBar-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.voila-GitBar-branch {
+  font-weight: 600;
+}
+
+.voila-GitBar-tag {
+  padding: 0 6px;
+  border-style: solid;
+  border-width: var(--jp-border-width);
+  border-color: var(--jp-border-color1);
+  border-radius: var(--jp-border-radius);
+  color: var(--jp-ui-font-color2);
+}
+
+.voila-GitBar-commit {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--jp-ui-font-color2);
+}
+
+.voila-GitBar-worktree,
+.voila-GitBar-incoming {
+  color: var(--jp-ui-font-color2);
+}
+
+.voila-GitBar-worktree-dirty {
+  color: var(--jp-warn-color1);
+}
+
+.voila-GitBar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voila-GitBar-branches,
+.voila-GitBar-pull {
+  font-size: var(--jp-ui-font-size1);
+}
+
+.voila-GitBar-pull[disabled] {
+  opacity: 0.5;
+}
+
+.voila-GitBar-message {
+  flex: 1 1 100%;
+  color: var(--jp-ui-font-color2);
+  white-space: pre-wrap;
+}
+
+.voila-GitBar-message-error {
+  color: var(--jp-error-color1);
+}
+
 .spacer-top-widget {
   max-height: 50px;
 }
